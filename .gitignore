@@ -1,0 +1,16 @@
+# Credentials & secrets — never commit these
+*.env
+*password*
+*credentials*
+wazuh-admin-password.txt
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+
+# Large/generated files — don't version these
+*.log
+*.vdi
+*.vmdk
+*.ova
