@@ -14,3 +14,8 @@ Thumbs.db
 *.vdi
 *.vmdk
 *.ova
+# Python environment/runtime files
+venv/
+__pycache__/
+*.pyc
+blocked_ips.json

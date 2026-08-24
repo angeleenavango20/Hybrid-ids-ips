@@ -1,0 +1,32 @@
+[
+  {
+    "timestamp": "2026-08-04T10:15:00.000000+0000",
+    "src_ip": "203.0.113.77",
+    "dest_ip": "192.168.1.50",
+    "alert": {"signature": "ET SCAN Possible SSH BruteForce", "severity": 1}
+  },
+  {
+    "timestamp": "2026-08-04T10:16:00.000000+0000",
+    "src_ip": "192.168.1.20",
+    "dest_ip": "192.168.1.50",
+    "alert": {"signature": "Informational connection logged", "severity": 3}
+  },
+  {
+    "timestamp": "2026-08-04T10:17:00.000000+0000",
+    "src_ip": "198.51.100.23",
+    "dest_ip": "192.168.1.50",
+    "alert": {"signature": "ET SCAN Nmap Port Scan", "severity": 1}
+  },
+  {
+    "timestamp": "2026-08-04T10:18:00.000000+0000",
+    "src_ip": "203.0.113.77",
+    "dest_ip": "192.168.1.50",
+    "alert": {"signature": "ET SCAN Possible SSH BruteForce", "severity": 2}
+  },
+  {
+    "timestamp": "2026-08-04T10:19:00.000000+0000",
+    "src_ip": "198.51.100.99",
+    "dest_ip": "192.168.1.50",
+    "alert": {"signature": "Firewall rule triggered", "severity": 3}
+  }
+]
