@@ -15,6 +15,30 @@ All three VMs sit on the same isolated **VMware Host-Only network** (no gateway,
 
 See `docs/network-diagram.pdf` for the visual topology.
 
+## Host-Only Network Details
+- VMnet used: _______________ (e.g. VMnet1)
+- Subnet: 192.168.141.0/24
+
+## VM Details
+
+**ids-engine**
+- OS: Ubuntu server 
+- RAM:  GB
+- Static IP: 192.168.141.10
+- Network adapter setting: Host-Only and NAT
+
+**victim-01**
+- OS: ubuntu
+- RAM:  GB
+- Static IP: 192.168.141.20
+- Network adapter setting: Host-Only and NAT
+
+**attacker**
+- OS: Kali Linux
+- RAM: _______ GB
+- Static IP: 192.168.141.30
+- Network adapter setting: Host-Only and NAT
+
 ## VMware Host-Only Network Setup
 
 1. Opened VMware → Edit → Virtual Network Editor
@@ -36,16 +60,16 @@ Applied with `sudo netplan apply`, verified with `ip a`.
 
 **victim-01** — configured via nmcli:
 ```bash
-sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.141.20/24
-sudo nmcli connection modify "Wired connection 1" ipv4.method manual
-sudo nmcli connection down "Wired connection 1" && sudo nmcli connection up "Wired connection 1"
+sudo nmcli connection modify "netplan-ens33" ipv4.addresses 192.168.141.20/24
+sudo nmcli connection modify "netplan-ens33" ipv4.method manual
+sudo nmcli connection down "netplan-ens33" && sudo nmcli connection up "netplan-ens33"
 ```
 
 **attacker (Kali)** — configured via nmcli:
 ```bash
-sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.141.30/24
-sudo nmcli connection modify "Wired connection 1" ipv4.method manual
-sudo nmcli connection down "Wired connection 1" && sudo nmcli connection up "Wired connection 1"
+sudo nmcli connection modify "wired connection 1" ipv4.addresses 192.168.141.30/24
+sudo nmcli connection modify "wired connection 1" ipv4.method manual
+sudo nmcli connection down "wired connection 1" && sudo nmcli connection up "wired connection 1"
 ```
 
 ## Connectivity Validation
@@ -90,4 +114,3 @@ ping -c 3 192.168.141.30
 
 ## Related Files
 - `docs/network-diagram.pdf` — network topology diagram
-- `screenshots/iptables-block-test-ids-engine.png` — iptables validation test
