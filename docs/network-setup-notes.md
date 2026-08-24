@@ -1,4 +1,4 @@
-# Network Setup Notes — Person A (Network Design & Infrastructure)
+# Network Setup Notes
 
 ## Overview
 This document covers the setup of the isolated host-only network connecting all 3 VMs for the Hybrid IDS/IPS project, along with static IP configuration and connectivity validation.
@@ -21,10 +21,9 @@ See `docs/network-diagram.pdf` for the visual topology.
 2. Used the default host-only network (VMnet1), subnet `192.168.141.0/24`
 3. Attached each VM's Network Adapter to this Host-only network (VM → Settings → Network Adapter → Host-only)
 
-## Static IP Configuration (Ubuntu VMs — ids-engine, victim-01)
+## Static IP Configuration
 
-Configured via netplan on each Ubuntu VM:
-
+**ids-engine** — configured via netplan:
 ```yaml
 network:
   version: 2
@@ -33,21 +32,16 @@ network:
       dhcp4: no
       addresses: [192.168.141.10/24]
 ```
-*(IP address changed per VM: `.10` for ids-engine, `.20` for victim-01)*
+Applied with `sudo netplan apply`, verified with `ip a`.
 
-Applied with:
+**victim-01** — configured via nmcli:
 ```bash
-sudo netplan apply
+sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.141.20/24
+sudo nmcli connection modify "Wired connection 1" ipv4.method manual
+sudo nmcli connection down "Wired connection 1" && sudo nmcli connection up "Wired connection 1"
 ```
 
-Verified with:
-```bash
-ip a
-```
-
-## Static IP Configuration (Kali — attacker)
-
-Configured via `nmcli`:
+**attacker (Kali)** — configured via nmcli:
 ```bash
 sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.141.30/24
 sudo nmcli connection modify "Wired connection 1" ipv4.method manual
@@ -56,12 +50,8 @@ sudo nmcli connection down "Wired connection 1" && sudo nmcli connection up "Wir
 
 ## Connectivity Validation
 
-Confirmed all VMs can ping each other successfully once:
-- All three VMs were powered on
-- Static IPs were correctly applied on each
-- All adapters were attached to the same host-only network
+Confirmed all VMs can ping each other successfully once all three were powered on, static IPs applied, and adapters attached to the same host-only network.
 
-Example:
 ```bash
 ping -c 3 192.168.141.20
 ping -c 3 192.168.141.30
@@ -69,7 +59,7 @@ ping -c 3 192.168.141.30
 
 ## iptables Manual Block Test (ids-engine)
 
-**Date:** August 17, 2026
+**Date:** August 23, 2026
 **Goal:** Validate that ids-engine can block traffic from a specific IP at the network level, before Person C automates this via the response script.
 
 | Step | Action | Result |
@@ -95,9 +85,7 @@ ping -c 3 192.168.141.30
 | "No network detected" warning during install | Static IP `192.168.141.10/24` has no gateway (isolated network) | Selected "Continue without network" — expected behavior for an isolated lab |
 | `sudo netplan apply` failed: "Invalid YAML: aliases are not supported" | Stray character at start of netplan file from an editing mistake | Cleared file in nano and retyped config cleanly |
 | Nano "Write to File" kept showing "Cancelled" | File name field was empty (nano opened without a path) | Manually typed full path `/etc/netplan/00-installer-config.yaml` before pressing Enter |
-| `victim-01` unreachable ("Destination Host Unreachable") from ids-engine | `victim-01` VM was either off, or static IP not yet configured/applied | Powered on `victim-01`, configured netplan for `.20`, applied |
-| `git clone` failed: "git is not recognized" | Git for Windows not installed | Installed Git for Windows, restarted PowerShell |
-| `git commit` failed: "Please tell me who you are" | Git needs user identity configured before first commit | Ran `git config --global user.email` and `git config --global user.name` |
+| `victim-01` unreachable ("Destination Host Unreachable") from ids-engine | `victim-01` VM was either off, or static IP not yet configured/applied | Powered on `victim-01`, configured IP, applied |
 | Created file showed as `network-config-notes.md.txt` in git | Windows was hiding the real `.txt` extension in File Explorer | Enabled "File name extensions" in File Explorer, renamed file to remove `.txt` |
 
 ## Related Files
