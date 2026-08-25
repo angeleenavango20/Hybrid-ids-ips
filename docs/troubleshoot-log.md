@@ -47,3 +47,15 @@ Every real issue encountered during the build, logged as it happened, organized 
 
 ---
 
+
+## August 25, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| suricata-test | `sudo reboot` failed: "Operation inhibited by gnome-session-s... user session inhibited" after installing open-vm-tools-desktop | Ubuntu Desktop's GUI session blocks a plain reboot command to protect against data loss in open apps | Used `sudo systemctl reboot -i` to force reboot, ignoring the session inhibitor |
+| suricata-test | Suricata started with warnings: "failed to create socket directory /var/run/suricata/: Permission denied" / "Unable to create unix command socket" | The `/var/run/suricata/` directory didn't exist with correct ownership for the `suricata` service user | `sudo mkdir -p /var/run/suricata && sudo chown suricata:suricata /var/run/suricata`, then `sudo systemctl restart suricata` |
+| suricata-test | `ls: cannot open directory '/var/log/suricata/': Permission denied` | Suricata runs as its own dedicated `suricata` user/group; regular user has no read access to the log directory by default | Used `sudo ls` / `sudo cat` to read log files; optionally added user to the `suricata` group for persistent access |
+| suricata-test | `nmap -sS` failed: "You requested a scan type which requires root privileges. QUITTING!" | SYN scans need raw socket access, which requires root | Ran with `sudo nmap -sS ...` |
+| suricata-test | `suricata-update` completed but logged "Warning: No enabled sources" | No rule source (e.g. ET Open) had been explicitly enabled, so only Suricata's minimal bundled rules were active | `sudo suricata-update enable-source et/open` then re-ran `sudo suricata-update`; confirmed 68,534 rule lines loaded afterward |
+
+---
