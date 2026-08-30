@@ -59,3 +59,17 @@ Every real issue encountered during the build, logged as it happened, organized 
 | suricata-test | `suricata-update` completed but logged "Warning: No enabled sources" | No rule source (e.g. ET Open) had been explicitly enabled, so only Suricata's minimal bundled rules were active | `sudo suricata-update enable-source et/open` then re-ran `sudo suricata-update`; confirmed 68,534 rule lines loaded afterward |
 
 ---
+## August 30, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| sme-custom.rules (sid:1000002, port scan) | Port scan rule never fired during `nmap -sS -p 1-1000` scan from a separate VM | `flags:S,CE` required SYN+CWR+ECE flags together; a normal SYN scan only sets the bare SYN flag, so the exact-match condition could never be satisfied | Changed `flags:S,CE` to `flags:S` |
+| sme-custom.rules (sid:1000002, port scan) | Rule still didn't fire after the flag fix | `journalctl -u suricata` revealed: "No rule files match the pattern /var/lib/suricata/rules/sme-custom.rules" — the working file lived in `/etc/suricata/rules/`, but Suricata's `default-rule-path` pointed to `/var/lib/suricata/rules/`, so the file was silently never loaded at all | Copied `sme-custom.rules` into `/var/lib/suricata/rules/` to match `default-rule-path`; confirmed with `suricata -T -c /etc/suricata/suricata.yaml -v` — 52,594 rules loaded, 0 failed, 0 skipped |
+| sme-custom.rules (sid:1000002, port scan) | Rule fired correctly, but `eve.json` was flooded with dozens of near-identical alerts (19 alerts within 3ms for one scan) | `detection_filter` re-alerts on every matching packet once the threshold is met, rather than firing once per detected event | Swapped `detection_filter:track by_src, count 15, seconds 10;` to `threshold:type both, track by_src, count 15, seconds 10;` — confirmed exactly one alert per scan afterward |
+| test-scanner / victim VM | SSH brute-force test loop failed: "Connection timed out" then "Network is unreachable" | `test-scanner` and the intended target VM were attached to two different virtual networks in VMware, not the same host-only network | Aligned both VMs' network adapter settings to the same virtual network; SSH connectivity succeeded afterward |
+| victim VM | `apt install openssh-server` failed: "Temporary failure resolving 'in.archive.ubuntu.com'" | No working DNS / no internet-reachable path on that VM's network adapter at the time | Not directly root-caused; resolved indirectly by confirming and switching to the correct VM/subnet for testing |
+| sme-custom.rules (sid:1000001, SSH brute-force) | Rule fired correctly, but 99 alerts logged for a single 6-attempt SSH test | Same root cause as the port-scan flooding issue — `detection_filter` re-alerting per matching packet | Swapped `detection_filter:track by_src, count 5, seconds 60;` to `threshold:type both, track by_src, count 5, seconds 60;` — confirmed exactly one alert |
+
+**Result:** SSH brute-force (sid:1000001) and port scan (sid:1000002) rules both fully validated with clean, single alerts per attack. SMB upload rules (sid:1000003–1000005) remain untested 
+
+---
