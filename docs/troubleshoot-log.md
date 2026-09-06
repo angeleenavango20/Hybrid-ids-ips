@@ -42,19 +42,15 @@ Every real issue encountered during the build, logged as it happened, organized 
 | ids-engine | Reinstall attempt failed: "Port 1515 is being used by another process" / "Port 55000 is being used by another process" | `sudo lsof -i :1515` and `:55000` revealed leftover `wazuh-authd` and `python3` (Wazuh API) processes still running from the earlier rolled-back install | Killed the stuck processes directly: `sudo kill -9 <pid>` for each port, verified with repeated `lsof` checks |
 | ids-engine | `dpkg --purge wazuh-manager` failed repeatedly — first on a broken `prerm` script (exit 127), then a broken `postrm` script referencing a deleted directory | Earlier manual `rm -rf /var/ossec` cleanup had deleted directories the package's own removal scripts still expected to exist, corrupting the package's removal state | Deleted the VM entirely and rebuilt fresh rather than continuing to patch corrupted package metadata |
 | ids-engine | Same LVM under-allocation pattern visible again during the fresh install's storage configuration screen (28.9GB of 57.9GB assigned to root) | Confirmed this is default behavior of Ubuntu's guided LVM installer, not a one-off fluke | Proceeded with installer defaults, then applied the `lvextend`/`resize2fs` fix immediately after first login, before installing anything else |
-**Result:** Wazuh installed successfully on `ids-engine` after resolving all of the above.
-| Component | Problem | Diagnosis | Fix |
-|---|---|---|---|
 | response-script (Windows) | `source venv/bin/activate` failed with "not recognized" | Used a Linux command on Windows Command Prompt — `source` doesn't exist there | Used the Windows-specific activation command: `venv\Scripts\activate` |
 | response-script (Windows) | `python main.py` failed with "No such file or directory" | Was running the command from the wrong folder after opening a new terminal session | Navigated back into the correct project folder with `cd` before running the script |
 | response-script (parser) | Script was built against Wazuh's alert format, but team confirmed Suricata `eve.json` was the actual source | Field names differ (`data.srcip` vs `src_ip`) and severity scale is inverted (Wazuh: higher=worse, Suricata: lower=worse) | Rewrote `parser.py` to match Suricata's field names, and flipped the threshold logic in `decision.py` from `>=` to `<=` |
 | GitHub (Windows) | `git clone` failed with "'git' is not recognized" | Git was not installed on the Windows machine | Installed Git for Windows, restarted the terminal |
 | GitHub (Windows) | `git commit` failed with "Author identity unknown" | Git didn't have a configured username/email yet (first commit on this machine) | Ran `git config --global user.name` and `git config --global user.email` to set identity |
 
-**Result:** Response script rebuilt to match Suricata's real alert format, and successfully committed and pushed to GitHub from Windows for the first time.
+**Result:** Wazuh installed successfully on `ids-engine` after resolving all of the above. Response script rebuilt to match Suricata's real alert format, and successfully committed and pushed to GitHub from Windows for the first time.
 
 ---
-
 
 ## August 25, 2026
 
@@ -65,15 +61,9 @@ Every real issue encountered during the build, logged as it happened, organized 
 | suricata-test | `ls: cannot open directory '/var/log/suricata/': Permission denied` | Suricata runs as its own dedicated `suricata` user/group; regular user has no read access to the log directory by default | Used `sudo ls` / `sudo cat` to read log files; optionally added user to the `suricata` group for persistent access |
 | suricata-test | `nmap -sS` failed: "You requested a scan type which requires root privileges. QUITTING!" | SYN scans need raw socket access, which requires root | Ran with `sudo nmap -sS ...` |
 | suricata-test | `suricata-update` completed but logged "Warning: No enabled sources" | No rule source (e.g. ET Open) had been explicitly enabled, so only Suricata's minimal bundled rules were active | `sudo suricata-update enable-source et/open` then re-ran `sudo suricata-update`; confirmed 68,534 rule lines loaded afterward |
-## August 25, 2026
-
-| Component | Problem | Diagnosis | Fix |
-|---|---|---|---|
 | GitHub (Ubuntu VM) | `git clone` failed with "Password authentication is not supported for Git operations" | Tried using the actual GitHub account password instead of a token | Generated a GitHub Personal Access Token (classic, `repo` scope) and used it as the password instead |
 | GitHub (Ubuntu VM) | Partial/broken clone folder blocked re-cloning ("destination path already exists") | An earlier clone attempt was interrupted at the authentication prompt, leaving an incomplete folder | Removed the incomplete folder with `rm -rf` before re-cloning cleanly |
 | response-script (Ubuntu VM) | Could not paste documentation text into `nano` | Clipboard sharing between host and VM was not enabled/working | Typed the content directly into the terminal using a `cat >> file << 'EOF'` heredoc instead of relying on paste |
-
-**Result:** Repo successfully cloned onto the Ubuntu VM using token-based authentication, ready for real (non-dry-run) testing.
 
 ---
 ## August 30, 2026
@@ -86,14 +76,26 @@ Every real issue encountered during the build, logged as it happened, organized 
 | test-scanner / victim VM | SSH brute-force test loop failed: "Connection timed out" then "Network is unreachable" | `test-scanner` and the intended target VM were attached to two different virtual networks in VMware, not the same host-only network | Aligned both VMs' network adapter settings to the same virtual network; SSH connectivity succeeded afterward |
 | victim VM | `apt install openssh-server` failed: "Temporary failure resolving 'in.archive.ubuntu.com'" | No working DNS / no internet-reachable path on that VM's network adapter at the time | Not directly root-caused; resolved indirectly by confirming and switching to the correct VM/subnet for testing |
 | sme-custom.rules (sid:1000001, SSH brute-force) | Rule fired correctly, but 99 alerts logged for a single 6-attempt SSH test | Same root cause as the port-scan flooding issue — `detection_filter` re-alerting per matching packet | Swapped `detection_filter:track by_src, count 5, seconds 60;` to `threshold:type both, track by_src, count 5, seconds 60;` — confirmed exactly one alert |
+| response-script (Ubuntu VM) | Needed to confirm blocking logic works for real, not just in simulation | Ran `block_ip("203.0.113.77", dry_run=False)` and checked `sudo iptables -L INPUT -v -n` | Confirmed a live DROP rule was created for the test IP — proves the script can genuinely block traffic, not just print commands |
 
-**Result:** SSH brute-force (sid:1000001) and port scan (sid:1000002) rules both fully validated with clean, single alerts per attack. SMB upload rules (sid:1000003–1000005) remain untested 
-## August 30, 2026
+**Result:** SSH brute-force (sid:1000001) and port scan (sid:1000002) rules both fully validated with clean, single alerts per attack. SMB upload rules (sid:1000003–1000005) remain untested. Response script (parser, decision logic, blocker) fully built, tested in dry-run against sample data, and verified with one real (non-dry-run) `iptables` block on the Ubuntu VM. Pushed to `scripts/` in the shared repo.
+
+---
+
+## September 5, 2026
 
 | Component | Problem | Diagnosis | Fix |
 |---|---|---|---|
-| response-script (Ubuntu VM) | Needed to confirm blocking logic works for real, not just in simulation | Ran `block_ip("203.0.113.77", dry_run=False)` and checked `sudo iptables -L INPUT -v -n` | Confirmed a live DROP rule was created for the test IP — proves the script can genuinely block traffic, not just print commands |
+| victim VM (Samba setup) | `apt install samba` failed: "Temporary failure resolving 'security.ubuntu.com'" | Same class of DNS/network-path issue seen previously during an openssh-server install on a different VM | Confirmed internet reachability and added a working DNS resolver |
+| sme-custom.rules (sids 1000003-1000005, SMB upload) | Uploaded `test.exe`, `test.ps1`, `test.bat` via `smbclient`, but none of the 3 custom SMB rules fired | Initial hypothesis testing ruled out SMB app-layer parsing (enabled), `file-store` config (enabled, version 2), and confirmed Suricata *did* see the port-445 traffic — it generated alerts, but only from ET Open's own built-in SMB signatures (sids 2025701, 2025705, 2027204, 2025707), not the custom rules | Root cause isolated using a bare-minimum diagnostic rule (`fileext:"exe"` only): test files were created with `touch` (0-byte, no content). Suricata's file-tracking engine needs actual data flowing through an SMB WRITE to build a file object for `fileext`/`filestore` to evaluate — ET's rules matched anyway because they key off the raw SMB `NT Create AndX Request` protocol structure, not file content |
+| sme-custom.rules (sids 1000003-1000005, SMB upload) | Following the root-cause diagnosis above | N/A — confirmed diagnosis | Recreated test files with real content (`echo "..." > test.exe`, etc.), re-uploaded via `smbclient`; all three custom rules fired correctly with `"stored": true` in the fileinfo log |
+| sme-custom.rules (sid:1000008, FTP brute-force) | Rule did not fire despite 6 connection attempts to port 21 from `test-scanner`; flow log confirmed Suricata saw the traffic (SYN sent, RST+ACK received, connection closed by timeout) | Rule condition `flow:to_server,established` requires the TCP connection to actually reach an established state (full handshake). A refused connection (nothing listening on the port) sends RST immediately and never becomes "established," so the rule's own condition could never be satisfied regardless of retry count | Installed `vsftpd` on `suricata-test` so port 21 had a real listening service; connections could then establish before closing, satisfying the rule. Re-tested — alert fired correctly, exactly once |
+| sme-custom.rules (sids 1000009 RDP, 1000016 MySQL) | Same `established`-state dependency as the FTP rule above — no real RDP or MySQL service available to test against | Setting up full RDP/MySQL servers was unnecessary just to validate connection-pattern detection logic, since the rules only match on TCP handshake behavior to a given port, not actual protocol content | Used a lightweight `nc -lk <port> &` listener on `suricata-test` to complete the TCP handshake without needing the real service; both rules then fired correctly |
+| sme-custom.rules (sid:1000006, SQL Injection) | Rule did not fire when sending `curl "http://.../?id=1+UNION+SELECT..."`, despite Suricata logging the HTTP request correctly | The rule's PCRE pattern `UNION\s+SELECT` expects whitespace between the words. `curl`'s default space-encoding uses a literal `+` character in the URL, which is an HTML-form convention, not something Suricata's `http.uri` buffer decodes as whitespace — so `\s+` never matched the literal `+` | Re-sent the request using explicit percent-encoding for spaces (`%20` instead of `+`), which Suricata's URI normalization does decode; alert fired correctly afterward |
+| sme-custom.rules (sid:1000007, XSS) | N/A — applied the `%20`/percent-encoding lesson proactively | Same encoding principle as the SQL injection rule | Used `%3C`/`%3E` percent-encoding for `<`/`>` in the test payload from the start; fired correctly on first attempt |
+| sme-custom.rules (sid:1000020, SMB Ransom Note) | Rule never fired despite confirmed successful file upload (`fileinfo` log showed the file tracked, 56 bytes, real content) | `sudo suricata -T -c ... -v` revealed a genuine rule syntax error: "invalid formatting or malformed option to filename keyword: 'filename'" — the rule used `filename;` as a bare sticky-buffer modifier followed by a separate `content:"README"`, but Suricata's `filename` keyword requires its match argument directly, e.g. `filename:"README"` | Rewrote as `filename:"README"`; a second validation pass then flagged "can't use multiple nocase modifiers with the same content" — removed the redundant standalone `nocase;` since `filename:"..."` handles matching without it. Rule then loaded with 0 errors and fired correctly |
+| sme-custom.rules (sid:1000012, DNS Tunneling) | Rule never fired despite 25 real TXT queries sent and confirmed logged by Suricata (35,159 total DNS events captured) | Rule used `dns.query; content:"TXT"` — but `dns.query` exposes the *queried domain name* (e.g. `data1.exfiltest.com`), not the DNS record type. The literal string "TXT" never appears in the domain name itself, so the content match could never succeed regardless of how many TXT queries were sent | Consulted Suricata's official DNS Keywords documentation; replaced with the correct dedicated keyword `dns.rrtype:TXT`, which matches the actual resource record type field. Rule then fired correctly on the same test traffic |
 
-**Result:** Response script (parser, decision logic, blocker) fully built, tested in dry-run against sample data, and verified with one real (non-dry-run) `iptables` block on the Ubuntu VM. Pushed to `scripts/` in the shared repo.
+**RESULT: All 20 of 20 custom Suricata rules validated** (5 original + 15 extended), each with real, documented test traffic and, where applicable, a genuine root-cause fix rather than a superficial retry.
 
-
+---
