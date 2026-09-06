@@ -42,8 +42,16 @@ Every real issue encountered during the build, logged as it happened, organized 
 | ids-engine | Reinstall attempt failed: "Port 1515 is being used by another process" / "Port 55000 is being used by another process" | `sudo lsof -i :1515` and `:55000` revealed leftover `wazuh-authd` and `python3` (Wazuh API) processes still running from the earlier rolled-back install | Killed the stuck processes directly: `sudo kill -9 <pid>` for each port, verified with repeated `lsof` checks |
 | ids-engine | `dpkg --purge wazuh-manager` failed repeatedly — first on a broken `prerm` script (exit 127), then a broken `postrm` script referencing a deleted directory | Earlier manual `rm -rf /var/ossec` cleanup had deleted directories the package's own removal scripts still expected to exist, corrupting the package's removal state | Deleted the VM entirely and rebuilt fresh rather than continuing to patch corrupted package metadata |
 | ids-engine | Same LVM under-allocation pattern visible again during the fresh install's storage configuration screen (28.9GB of 57.9GB assigned to root) | Confirmed this is default behavior of Ubuntu's guided LVM installer, not a one-off fluke | Proceeded with installer defaults, then applied the `lvextend`/`resize2fs` fix immediately after first login, before installing anything else |
-
 **Result:** Wazuh installed successfully on `ids-engine` after resolving all of the above.
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| response-script (Windows) | `source venv/bin/activate` failed with "not recognized" | Used a Linux command on Windows Command Prompt — `source` doesn't exist there | Used the Windows-specific activation command: `venv\Scripts\activate` |
+| response-script (Windows) | `python main.py` failed with "No such file or directory" | Was running the command from the wrong folder after opening a new terminal session | Navigated back into the correct project folder with `cd` before running the script |
+| response-script (parser) | Script was built against Wazuh's alert format, but team confirmed Suricata `eve.json` was the actual source | Field names differ (`data.srcip` vs `src_ip`) and severity scale is inverted (Wazuh: higher=worse, Suricata: lower=worse) | Rewrote `parser.py` to match Suricata's field names, and flipped the threshold logic in `decision.py` from `>=` to `<=` |
+| GitHub (Windows) | `git clone` failed with "'git' is not recognized" | Git was not installed on the Windows machine | Installed Git for Windows, restarted the terminal |
+| GitHub (Windows) | `git commit` failed with "Author identity unknown" | Git didn't have a configured username/email yet (first commit on this machine) | Ran `git config --global user.name` and `git config --global user.email` to set identity |
+
+**Result:** Response script rebuilt to match Suricata's real alert format, and successfully committed and pushed to GitHub from Windows for the first time.
 
 ---
 
@@ -57,6 +65,15 @@ Every real issue encountered during the build, logged as it happened, organized 
 | suricata-test | `ls: cannot open directory '/var/log/suricata/': Permission denied` | Suricata runs as its own dedicated `suricata` user/group; regular user has no read access to the log directory by default | Used `sudo ls` / `sudo cat` to read log files; optionally added user to the `suricata` group for persistent access |
 | suricata-test | `nmap -sS` failed: "You requested a scan type which requires root privileges. QUITTING!" | SYN scans need raw socket access, which requires root | Ran with `sudo nmap -sS ...` |
 | suricata-test | `suricata-update` completed but logged "Warning: No enabled sources" | No rule source (e.g. ET Open) had been explicitly enabled, so only Suricata's minimal bundled rules were active | `sudo suricata-update enable-source et/open` then re-ran `sudo suricata-update`; confirmed 68,534 rule lines loaded afterward |
+## August 25, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| GitHub (Ubuntu VM) | `git clone` failed with "Password authentication is not supported for Git operations" | Tried using the actual GitHub account password instead of a token | Generated a GitHub Personal Access Token (classic, `repo` scope) and used it as the password instead |
+| GitHub (Ubuntu VM) | Partial/broken clone folder blocked re-cloning ("destination path already exists") | An earlier clone attempt was interrupted at the authentication prompt, leaving an incomplete folder | Removed the incomplete folder with `rm -rf` before re-cloning cleanly |
+| response-script (Ubuntu VM) | Could not paste documentation text into `nano` | Clipboard sharing between host and VM was not enabled/working | Typed the content directly into the terminal using a `cat >> file << 'EOF'` heredoc instead of relying on paste |
+
+**Result:** Repo successfully cloned onto the Ubuntu VM using token-based authentication, ready for real (non-dry-run) testing.
 
 ---
 ## August 30, 2026
@@ -71,5 +88,12 @@ Every real issue encountered during the build, logged as it happened, organized 
 | sme-custom.rules (sid:1000001, SSH brute-force) | Rule fired correctly, but 99 alerts logged for a single 6-attempt SSH test | Same root cause as the port-scan flooding issue — `detection_filter` re-alerting per matching packet | Swapped `detection_filter:track by_src, count 5, seconds 60;` to `threshold:type both, track by_src, count 5, seconds 60;` — confirmed exactly one alert |
 
 **Result:** SSH brute-force (sid:1000001) and port scan (sid:1000002) rules both fully validated with clean, single alerts per attack. SMB upload rules (sid:1000003–1000005) remain untested 
+## August 30, 2026
 
----
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| response-script (Ubuntu VM) | Needed to confirm blocking logic works for real, not just in simulation | Ran `block_ip("203.0.113.77", dry_run=False)` and checked `sudo iptables -L INPUT -v -n` | Confirmed a live DROP rule was created for the test IP — proves the script can genuinely block traffic, not just print commands |
+
+**Result:** Response script (parser, decision logic, blocker) fully built, tested in dry-run against sample data, and verified with one real (non-dry-run) `iptables` block on the Ubuntu VM. Pushed to `scripts/` in the shared repo.
+
+
