@@ -20,7 +20,7 @@ alert tcp any any -> $HOME_NET 23 (msg:"CUSTOM Telnet Connection Attempt - Insec
 
 alert icmp any any -> $HOME_NET any (msg:"CUSTOM Possible ICMP Flood - Ping DoS"; itype:8; threshold:type both, track by_src, count 50, seconds 5; sid:1000011; rev:1; classtype:attempted-dos; priority:2;)
 
-alert dns any any -> any 53 (msg:"CUSTOM Possible DNS Tunneling - High TXT Query Rate"; dns.rrtype:TXT; threshold:type both, track by_src, count 20, seconds 60; sid:1000012; rev:1; classtype:policy-violation; priority:2;)
+alert dns any any -> any 53 (msg:"CUSTOM Possible DNS Tunneling - High TXT Query Rate"; content:"|00 10 00 01|"; threshold:type both, track by_src, count 20, seconds 60; sid:1000012; rev:1; classtype:policy-violation; priority:2;)
 
 alert tcp $HOME_NET any -> any 4444 (msg:"CUSTOM Suspicious Outbound Connection to Common C2 Port (4444)"; flow:to_server,established; sid:1000013; rev:1; classtype:trojan-activity; priority:1;)
 
