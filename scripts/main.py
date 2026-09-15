@@ -20,4 +20,4 @@ def run_pipeline(alert_file, dry_run=True):
         print(f"{action:6} | {alert['source_ip']:15} | severity={alert['severity']:3} | {final_reason} | {alert['description']}")
 
 if __name__ == "__main__":
-    run_pipeline("/var/log/suricata/eve.json", dry_run=True)
+    run_pipeline("/var/log/suricata/eve.json", dry_run=False)

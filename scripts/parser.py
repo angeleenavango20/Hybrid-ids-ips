@@ -16,6 +16,7 @@ def parse_alert(alert):
 
 def load_alerts(filepath):
     """Load and parse all alerts from a JSON file."""
+    parsed = []
     with open(filepath, "r") as f:
         for line in f:
             line = line.strip()
