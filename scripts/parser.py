@@ -16,18 +16,9 @@ def parse_alert(alert):
 
 def load_alerts(filepath):
     """Load and parse all alerts from a JSON file."""
-    parsed = []
     with open(filepath, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if entry.get("event_type") == "alert":
-                parsed.append(parse_alert(entry))
+        raw_alerts = json.load(f)
+    parsed = [parse_alert(a) for a in raw_alerts]
     return parsed
 
 if __name__ == "__main__":
