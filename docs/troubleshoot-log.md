@@ -99,3 +99,61 @@ Every real issue encountered during the build, logged as it happened, organized 
 **RESULT: All 20 of 20 custom Suricata rules validated** (5 original + 15 extended), each with real, documented test traffic and, where applicable, a genuine root-cause fix rather than a superficial retry.
 
 ---
+
+## September 12, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| Suricata (ids-engine) | `suricata -T` failed on the SMB rules (3-5, 20) | `file-store` was not enabled in ids-engine's `suricata.yaml` (it was already enabled on suricata-test) | Set `file-store: enabled: yes` and re-validated; 0 rules failed |
+| Suricata (ids-engine) | `dns.rrtype` reported as an unknown keyword | ids-engine's Suricata version differs from suricata-test (8.0.6) and does not support the keyword | Rewrote the DNS tunneling rule using raw byte-content matching |
+| Filebeat (ids-engine) | Needed to ship `eve.json` without breaking Wazuh's own Filebeat setup | Existing config only had `filebeat.modules` plus a working `output.elasticsearch` block (certs, wazuh template) | Added only an additive `filebeat.inputs` block for `/var/log/suricata/eve.json`; left the output config untouched |
+| Filebeat → Wazuh | Suricata alerts not appearing in the Wazuh dashboard | Data landed in a separate `filebeat-*` index (not `wazuh-alerts-*`), and each JSON line was stored as one raw text blob | Added `json.keys_under_root`, `json.add_error_key` and `json.message_key` to the input, and created a `filebeat-*` index pattern |
+| Testing | SSH brute-force from attacker produced no alert; `nc -zv` output looked like a failure | "Inverse host lookup failed" is a benign DNS warning; placeholders like `<ids-engine-ip>` had been typed literally | Tested with a direct `ssh` attempt and checked `ufw`/`iptables`; always replace placeholders with real values |
+
+## September 14, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| main.py | Response script ignored real alerts | Path was hardcoded to `sample_alerts.json` | Pointed it at `/var/log/suricata/eve.json` |
+| parser.py | `JSONDecodeError` on real data | `eve.json` is NDJSON (one object per line); the sample file was a JSON array and `json.load()` assumed that | Rewrote the loader to read line by line and `json.loads()` each line |
+| parser.py | `KeyError` on non-alert entries | `flow`, `http`, `dns` and `stats` events have no `alert.severity` / `alert.signature` | Added `if event_type != "alert": continue` before parsing |
+| Testing | "Successful" detection tests did not prove the real architecture | Every earlier test had targeted ids-engine itself, not victim-01 | Re-ran the attack against victim-01; `tcpdump` on ids-engine confirmed mirrored traffic to victim-01 is visible |
+| Suricata (ids-engine) | Some SSH test attempts produced no alert | `tcpdump` reported 96 of 159 packets dropped by the kernel, so the VM is under resource pressure | Documented as a resource-constraint limitation; repeat the attack N times and report the detection rate |
+| blocker.py | Host IP `192.168.141.1` was auto-blocked | Repeated "ET POLICY Spotify P2P Client" alerts hit the repeat-offender rule and the IP was not whitelisted | Added the host/gateway IP to `WHITELIST` |
+| blocker.py | Duplicate identical DROP rules for one IP | `block_ip()` ran `iptables -A` without checking for an existing rule | Added an `iptables -C` existence check before inserting |
+| main.py | Auto-unblock never fired | `check_expired_blocks()` only ran when `main.py` was manually re-executed; nothing called it on a schedule | Rebuilt `main.py` as a continuous `tail -f`-style watcher that runs the expiry check every 30 s |
+| blocker.py | Block disappeared after a VM reboot while `blocked_ips.json` still listed it | iptables rules do not persist across reboots, so tracked state and real firewall state drifted apart | Added `reconcile_state_on_startup()` to re-apply or clean up blocks against actual iptables state |
+| main.py | Log rotation could silently stop alert processing | A rotated `eve.json` gets a new inode, so the open file handle goes stale | Watcher tracks the inode and reopens the file when it changes; per-alert catch-all handling added |
+
+---
+
+## September 16, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| decision.py / ml_model.py | ML layer only ever saw one data point per IP | Repeat-offender rule blocked an IP on its 2nd alert, before the activity tracker's `record()` ran again, freezing frequency and port-diversity at "1 event" | `ml_evaluate()` now runs on every alert to keep history fresh; its verdict is only used when the fixed rules haven't already fired |
+| ml_model.py | Classifier reported 100% train and 100% test accuracy | Synthetic normal and anomalous distributions were perfectly separable, which is unrealistic | Added a "busy but legitimate" minority to normal traffic and a "slow and low" minority to attack traffic; accuracy is now 98.1% train / 96.6% test |
+| decision.py | ML layer was effectively redundant | `REPEAT_OFFENSE_LIMIT = 2` blocked repeating sources before ML had enough history | Raised to 5 (matches the SSH rule's 5-attempt threshold), giving ML a real window on alerts 2-4 |
+| decision.py | Parallel teammate build let ML hold back obvious attacks | ML-first routing had too little history on first-seen alerts | Fixed rules stay authoritative; ML is a supplementary safety net for what they miss |
+| main.py | Reboot-reconciliation never ran | `reconcile_state_on_startup()` existed but nothing called it | Added the call at startup; confirmed live, it cleaned up 4 stale `blocked_ips.json` entries |
+
+---
+
+## September 17, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| blocker.py | Attacker was "blocked" yet could still reach victim-01 | The DROP rule was on ids-engine's INPUT chain; ids-engine is out-of-band (SPAN) and not in the attacker → victim path, so the rule only affected traffic to ids-engine itself | Identified two options (route through ids-engine, or enforce on victim-01); chose enforcement on victim-01 |
+| Testing | Ping test appeared to prove the block worked | Attacker was pinging ids-engine (.10), which the rule did affect, rather than victim-01 (.20) | Verify blocks against the protected endpoint (`ping 192.168.141.20`) |
+| blocker.py | Victim-to-ids-engine packet loss | A protocol-anomaly alert misattributed `192.168.141.20` as a source IP and it was blocked | Added `.20` (victim-01) and `.10` (ids-engine) to `WHITELIST` |
+
+---
+
+## September 18, 2026
+
+| Component | Problem | Diagnosis | Fix |
+|---|---|---|---|
+| blocker.py | Block on ids-engine had no effect on attacker → victim-01 traffic | Suricata runs out-of-band on mirrored traffic, so enforcement must happen on the host actually in the traffic path | Set up key-based SSH from ids-engine to victim-01 with a `NOPASSWD` sudoers rule limited to the `iptables` binary; block, unblock and reconcile now run remotely with `BatchMode=yes` and timeouts. Verified attacker can no longer reach victim-01 |
+| blocker.py | Unattended watcher could hang or crash on SSH failure | A password prompt or unreachable host would block the loop | `BatchMode=yes`, `ConnectTimeout=5` and subprocess timeouts; SSH failures are returned as recoverable errors |
+| Logging / Wazuh | Response actions not visible in the dashboard | `block_log.txt` was plain text | Rewrote `log_action()` to write NDJSON, added a second Filebeat input, tagged entries `log_source: "response_script"` |
+| Deployment | Watcher depended on an open terminal session | Script was run manually | Deployed as a `systemd` service (auto-start, restart on failure); working directory set so relative tracking files resolve |
