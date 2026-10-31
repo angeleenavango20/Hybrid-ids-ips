@@ -2,7 +2,7 @@
 
 Extends the detection-only Suricata + Wazuh architecture of Mersni et al. (IEEE Access, 2025) with an **automated response layer** that blocks malicious IPs in real time and unblocks them after a timeout.
 
-> **Lab and educational use only.** This is a research prototype validated on an isolated virtual lab. The IP addresses shown are private lab addresses. Review and harden before any production use.
+> **Lab and educational use only.** This is a research prototype validated on an isolated virtual lab. The IP addresses shown are private lab addresses. 
 
 ## Why
 
